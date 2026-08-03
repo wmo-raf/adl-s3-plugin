@@ -4,6 +4,7 @@ ADL S3 Plugin Models.
 Provides S3Upload dispatch channel for pushing observation data to S3-compatible storage.
 """
 import logging
+import time
 
 from adl.core.models import DispatchChannel
 from django.core.exceptions import ValidationError
@@ -168,21 +169,43 @@ class BaseS3Upload(models.Model):
     
     def test_connection(self):
         """
-        Test the S3 connection.
-        
-        Returns:
-            Tuple of (success: bool, message: str)
+        Probe the bucket: reachability, authentication, and permission to
+        list under the configured prefix.
+
+        Returns the shape ``DispatchChannel.test_connection`` documents —
+        a dict with ``ok``, ``supported``, ``message`` and ``latency_ms``.
         """
+        start = time.monotonic()
+
+        def latency_ms():
+            return int((time.monotonic() - start) * 1000)
+
         try:
             client = self.get_client()
             # Try listing objects to verify access
             client.list_objects(prefix=self.prefix, max_keys=1)
             client.close()
-            return True, _("Connection successful")
         except S3Error as e:
-            return False, str(e)
+            return {
+                "ok": False,
+                "supported": True,
+                "message": str(e),
+                "latency_ms": latency_ms(),
+            }
         except Exception as e:
-            return False, _("Unexpected error: %(error)s") % {'error': str(e)}
+            return {
+                "ok": False,
+                "supported": True,
+                "message": _("Unexpected error: %(error)s") % {'error': str(e)},
+                "latency_ms": latency_ms(),
+            }
+
+        return {
+            "ok": True,
+            "supported": True,
+            "message": _("Connection successful"),
+            "latency_ms": latency_ms(),
+        }
 
 
 class S3Upload(BaseS3Upload, DispatchChannel):
