@@ -1,7 +1,8 @@
 """
 ADL S3 Plugin Models.
 
-Provides S3Upload dispatch channel for pushing observation data to S3-compatible storage.
+Provides S3Upload dispatch channel for pushing observation data to
+S3-compatible storage.
 """
 import logging
 import time
@@ -22,15 +23,15 @@ logger = logging.getLogger(__name__)
 class BaseS3Upload(models.Model):
     """
     Base model for S3-compatible storage upload configuration.
-    
+
     Works with AWS S3, MinIO, and other S3-compatible services.
     """
-    
+
     WRITE_MODES = (
         ("append", _("Append record to single daily file")),
         ("new_file", _("Create a new file for each record")),
     )
-    
+
     # Connection settings
     endpoint_url = models.CharField(
         max_length=500,
@@ -61,7 +62,7 @@ class BaseS3Upload(models.Model):
         help_text=_("AWS region (e.g., us-east-1, eu-west-1). "
                     "For MinIO, this can usually be left as default.")
     )
-    
+
     # SSL settings
     use_ssl = models.BooleanField(
         default=True,
@@ -74,7 +75,7 @@ class BaseS3Upload(models.Model):
         help_text=_("Whether to verify SSL certificates. "
                     "Disable for self-signed certificates in development.")
     )
-    
+
     # Storage path settings
     prefix = models.CharField(
         max_length=500,
@@ -84,7 +85,7 @@ class BaseS3Upload(models.Model):
                     "E.g., 'observations/weather' will create objects like "
                     "'observations/weather/station_id/file.csv'")
     )
-    
+
     # Output settings
     timezone = TimeZoneField(
         default='UTC',
@@ -107,7 +108,7 @@ class BaseS3Upload(models.Model):
             "separate date and time columns will be used."
         )
     )
-    
+
     # Performance settings
     max_upload_workers = models.PositiveIntegerField(
         default=10,
@@ -115,29 +116,29 @@ class BaseS3Upload(models.Model):
         help_text=_("Maximum number of concurrent upload threads. "
                     "Higher values = faster uploads but more resource usage.")
     )
-    
+
     class Meta:
         abstract = True
-    
+
     def clean(self):
         """Validate S3 connection settings."""
         super().clean()
-        
+
         if not self.bucket_name:
             raise ValidationError({
                 'bucket_name': _("Bucket name is required")
             })
-        
+
         if not self.access_key:
             raise ValidationError({
                 'access_key': _("Access key is required")
             })
-        
+
         if not self.secret_key:
             raise ValidationError({
                 'secret_key': _("Secret key is required")
             })
-        
+
         # Validate endpoint URL format if provided
         if self.endpoint_url:
             if not (self.endpoint_url.startswith('http://') or
@@ -145,7 +146,7 @@ class BaseS3Upload(models.Model):
                 raise ValidationError({
                     'endpoint_url': _("Endpoint URL must start with http:// or https://")
                 })
-    
+
     @property
     def connection_details(self):
         """Get connection details for the S3 client."""
@@ -157,16 +158,16 @@ class BaseS3Upload(models.Model):
             "use_ssl": self.use_ssl,
             "verify_ssl": self.verify_ssl,
         }
-        
+
         if self.endpoint_url:
             details["endpoint_url"] = self.endpoint_url
-        
+
         return details
-    
+
     def get_client(self):
         """Get S3 client instance."""
         return S3Client(**self.connection_details)
-    
+
     def test_connection(self):
         """
         Probe the bucket: reachability, authentication, and permission to
@@ -211,11 +212,11 @@ class BaseS3Upload(models.Model):
 class S3Upload(BaseS3Upload, DispatchChannel):
     """
     S3-compatible storage dispatch channel.
-    
+
     Uploads observation data as CSV files to AWS S3, MinIO,
     or other S3-compatible storage services.
     """
-    
+
     panels = DispatchChannel.base_panels + [
         FieldPanel("timezone"),
         MultiFieldPanel([
@@ -236,19 +237,19 @@ class S3Upload(BaseS3Upload, DispatchChannel):
             FieldPanel("max_upload_workers"),
         ], heading=_("Storage Settings")),
     ] + DispatchChannel.parameter_panels
-    
+
     class Meta:
         verbose_name = _("S3 Upload")
         verbose_name_plural = _("S3 Uploads")
-    
+
     def send_station_data(self, station_link, station_data_records):
         """
         Send station data to S3.
-        
+
         Args:
             station_link: StationLink instance
             station_data_records: List of observation records to upload
-            
+
         Returns:
             Tuple of (uploaded_count, last_sent_obs_time)
         """
@@ -258,16 +259,16 @@ class S3Upload(BaseS3Upload, DispatchChannel):
             max_workers=self.max_upload_workers,
             use_single_timestamp=self.use_single_timestamp
         )
-    
+
     class MinIOUpload(BaseS3Upload, DispatchChannel):
         """
         MinIO-specific dispatch channel with sensible defaults for MinIO deployments.
-        
+
         This is essentially the same as S3Upload but with defaults better suited
         for typical MinIO deployments (e.g., SSL verification disabled by default
         for development environments).
         """
-        
+
         # Override defaults for MinIO
         use_ssl = models.BooleanField(
             default=False,
@@ -288,7 +289,7 @@ class S3Upload(BaseS3Upload, DispatchChannel):
             verbose_name=_("Region"),
             help_text=_("MinIO region. Can usually be left as default.")
         )
-        
+
         panels = DispatchChannel.base_panels + [
             FieldPanel("timezone"),
             MultiFieldPanel([
@@ -309,22 +310,22 @@ class S3Upload(BaseS3Upload, DispatchChannel):
                 FieldPanel("max_upload_workers"),
             ], heading=_("Storage Settings")),
         ] + DispatchChannel.parameter_panels
-        
+
         class Meta:
             verbose_name = _("MinIO Upload")
             verbose_name_plural = _("MinIO Uploads")
-        
+
         def clean(self):
             """Validate MinIO connection settings."""
             super().clean()
-            
+
             # MinIO requires an endpoint URL
             if not self.endpoint_url:
                 raise ValidationError({
                     'endpoint_url': _("Endpoint URL is required for MinIO. "
                                       "E.g., http://localhost:9000 or https://minio.example.com")
                 })
-        
+
         def send_station_data(self, station_link, station_data_records):
             """Send station data to MinIO."""
             return dispatch_to_s3(
