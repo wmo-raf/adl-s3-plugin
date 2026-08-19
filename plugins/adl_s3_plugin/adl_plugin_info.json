@@ -1,6 +1,5 @@
 {
   "name": "ADL S3 Plugin",
-  "version": "0.0.1",
   "description": "ADL plugin for dispatching observation data to S3-compatible storage (AWS S3, MinIO, etc.)",
   "author": "WMO RAF",
   "author_url": "TODO",

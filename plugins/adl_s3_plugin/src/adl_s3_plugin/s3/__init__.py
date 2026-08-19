@@ -21,13 +21,13 @@ S3_CONNECTION_ERRORS = (
 
 class S3Error(Exception):
     """Base class for S3 errors"""
-    
+
     def __init__(self, message: str, status: int = 500, code: str = None):
         super().__init__(message)
         self.message = message
         self.status = status
         self.code = code
-    
+
     def __str__(self):
         if self.code:
             return f"{self.message} (Code: {self.code}, HTTP {self.status})"
@@ -40,7 +40,7 @@ def map_s3_error(error: Exception) -> tuple:
         error_code = error.response.get('Error', {}).get('Code', 'Unknown')
         error_message = error.response.get('Error', {}).get('Message', str(error))
         http_status = error.response.get('ResponseMetadata', {}).get('HTTPStatusCode', 500)
-        
+
         error_map = {
             'NoSuchBucket': (f"Bucket does not exist: {error_message}", 404),
             'NoSuchKey': (f"Object not found: {error_message}", 404),
@@ -52,15 +52,15 @@ def map_s3_error(error: Exception) -> tuple:
             'BucketAlreadyExists': (f"Bucket already exists: {error_message}", 409),
             'BucketNotEmpty': ("Bucket is not empty", 409),
         }
-        
+
         if error_code in error_map:
             return error_map[error_code][0], error_map[error_code][1], error_code
-        
+
         return error_message, http_status, error_code
-    
+
     elif isinstance(error, BotoCoreError):
         return str(error), 500, 'BotoCoreError'
-    
+
     return str(error), 500, 'Unknown'
 
 
@@ -72,7 +72,7 @@ class S3Client:
     including AWS S3, MinIO, and others. The interface mirrors the FTP client pattern
     used elsewhere in ADL for consistency.
     """
-    
+
     def __init__(
             self,
             bucket_name: str,
@@ -101,7 +101,7 @@ class S3Client:
         self.bucket_name = bucket_name
         self.endpoint_url = endpoint_url
         self.region = region
-        
+
         try:
             client_kwargs = {
                 "service_name": "s3",
@@ -110,23 +110,23 @@ class S3Client:
                 "region_name": region,
                 "use_ssl": use_ssl,
             }
-            
+
             if endpoint_url:
                 client_kwargs["endpoint_url"] = endpoint_url
-            
+
             if not verify_ssl:
                 client_kwargs["verify"] = False
-            
+
             self.client = boto3.client(**client_kwargs)
-            
+
             # Verify connection by checking if bucket exists
             self.client.head_bucket(Bucket=bucket_name)
             logger.debug(f"[S3] Connected to bucket '{bucket_name}'")
-        
+
         except S3_CONNECTION_ERRORS as e:
             message, status, code = map_s3_error(e)
             raise S3Error(message, status, code)
-    
+
     def put(self, file_obj: BytesIO, remote_path: str, content_type: str = "text/csv") -> Dict[str, Any]:
         """
         Upload a file to S3.
@@ -144,25 +144,25 @@ class S3Client:
         """
         # Strip leading slash if present (S3 keys don't need them)
         key = remote_path.lstrip('/')
-        
+
         try:
             # Ensure we're at the start of the file
             file_obj.seek(0)
-            
+
             response = self.client.put_object(
                 Bucket=self.bucket_name,
                 Key=key,
                 Body=file_obj,
                 ContentType=content_type,
             )
-            
+
             logger.debug(f"[S3] Uploaded '{key}' to bucket '{self.bucket_name}'")
             return response
-        
+
         except S3_CONNECTION_ERRORS as e:
             message, status, code = map_s3_error(e)
             raise S3Error(f"Failed to upload '{key}': {message}", status, code)
-    
+
     def get(self, remote_path: str) -> bytes:
         """
         Download a file from S3.
@@ -177,21 +177,21 @@ class S3Client:
             S3Error: If download fails or file doesn't exist
         """
         key = remote_path.lstrip('/')
-        
+
         try:
             response = self.client.get_object(
                 Bucket=self.bucket_name,
                 Key=key,
             )
-            
+
             content = response['Body'].read()
             logger.debug(f"[S3] Downloaded '{key}' from bucket '{self.bucket_name}'")
             return content
-        
+
         except S3_CONNECTION_ERRORS as e:
             message, status, code = map_s3_error(e)
             raise S3Error(f"Failed to download '{key}': {message}", status, code)
-    
+
     def exists(self, remote_path: str) -> bool:
         """
         Check if an object exists in S3.
@@ -203,7 +203,7 @@ class S3Client:
             True if object exists, False otherwise
         """
         key = remote_path.lstrip('/')
-        
+
         try:
             self.client.head_object(Bucket=self.bucket_name, Key=key)
             return True
@@ -211,7 +211,7 @@ class S3Client:
             if e.response['Error']['Code'] == '404':
                 return False
             raise S3Error(*map_s3_error(e))
-    
+
     def delete(self, remote_path: str) -> Dict[str, Any]:
         """
         Delete an object from S3.
@@ -226,20 +226,20 @@ class S3Client:
             S3Error: If deletion fails
         """
         key = remote_path.lstrip('/')
-        
+
         try:
             response = self.client.delete_object(
                 Bucket=self.bucket_name,
                 Key=key,
             )
-            
+
             logger.debug(f"[S3] Deleted '{key}' from bucket '{self.bucket_name}'")
             return response
-        
+
         except S3_CONNECTION_ERRORS as e:
             message, status, code = map_s3_error(e)
             raise S3Error(f"Failed to delete '{key}': {message}", status, code)
-    
+
     def list_objects(self, prefix: str = "", max_keys: int = 1000) -> List[Dict[str, Any]]:
         """
         List objects in the bucket with optional prefix filter.
@@ -255,14 +255,14 @@ class S3Client:
             S3Error: If listing fails
         """
         prefix = prefix.lstrip('/')
-        
+
         try:
             response = self.client.list_objects_v2(
                 Bucket=self.bucket_name,
                 Prefix=prefix,
                 MaxKeys=max_keys,
             )
-            
+
             objects = []
             for obj in response.get('Contents', []):
                 objects.append({
@@ -271,13 +271,13 @@ class S3Client:
                     'LastModified': obj['LastModified'],
                     'ETag': obj['ETag'].strip('"'),
                 })
-            
+
             return objects
-        
+
         except S3_CONNECTION_ERRORS as e:
             message, status, code = map_s3_error(e)
             raise S3Error(f"Failed to list objects: {message}", status, code)
-    
+
     def ensure_prefix_exists(self, prefix: str) -> None:
         """
         Ensure a 'directory' prefix exists in S3.
@@ -291,10 +291,10 @@ class S3Client:
         """
         if not prefix:
             return
-        
+
         # Normalize prefix to end with /
         prefix = prefix.strip('/') + '/'
-        
+
         # Check if any objects exist with this prefix
         try:
             response = self.client.list_objects_v2(
@@ -302,7 +302,7 @@ class S3Client:
                 Prefix=prefix,
                 MaxKeys=1,
             )
-            
+
             if response.get('KeyCount', 0) == 0:
                 # Create empty object as directory marker
                 self.client.put_object(
@@ -311,11 +311,11 @@ class S3Client:
                     Body=b'',
                 )
                 logger.debug(f"[S3] Created directory marker '{prefix}'")
-        
+
         except S3_CONNECTION_ERRORS as e:
             message, status, code = map_s3_error(e)
             raise S3Error(f"Failed to ensure prefix '{prefix}': {message}", status, code)
-    
+
     def close(self) -> None:
         """
         Close the S3 client connection.
@@ -326,10 +326,10 @@ class S3Client:
         # boto3 clients manage their own connection pooling
         # This is a no-op but maintains interface compatibility
         logger.debug(f"[S3] Closed client for bucket '{self.bucket_name}'")
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
         return False

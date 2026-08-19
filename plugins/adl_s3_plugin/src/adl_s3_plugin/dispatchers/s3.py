@@ -1,7 +1,8 @@
 """
 S3 Dispatcher for ADL.
 
-Handles preparing observation data as CSV files and uploading them to S3-compatible storage.
+Handles preparing observation data as CSV files and uploading them to
+S3-compatible storage.
 Supports both single-file-per-record and append-to-daily-file modes.
 Uses ThreadPoolExecutor for parallel uploads.
 """
@@ -75,7 +76,7 @@ class ObsRecord:
     wigos_id: Optional[str]
     timestamp: pd.Timestamp
     values: dict
-    
+
     def to_row(self, header: List[str], timezone="UTC") -> List[str]:
         """Convert record to a CSV row."""
         dt = self.timestamp.astimezone(timezone)
@@ -83,16 +84,16 @@ class ObsRecord:
             "station_id": self.station_id,
             **self.values
         }
-        
+
         if "wigos_id" in header:
             base["wigos_id"] = self.wigos_id or ""
-        
+
         if "timestamp" in header:
             base["timestamp"] = dt.strftime("%Y%m%dT%H%M%S")
         else:
             base["date"] = dt.strftime("%Y-%m-%d")
             base["time"] = dt.strftime("%H:%M:%S")
-        
+
         return [base.get(col, "") for col in header]
 
 
@@ -103,7 +104,7 @@ def csv_to_records(csv_content: bytes, csv_header: List[str], value_columns: Lis
     validate_csv_header(df.columns, csv_header)
     df["timestamp"] = build_timestamp(df["date"].astype(str), df["time"].astype(str))
     df = df.sort_values(by=["timestamp"])
-    
+
     return [
         ObsRecord(
             station_id=row.get("station_id"),
@@ -129,18 +130,18 @@ def create_csv_file(records: List[ObsRecord], header: List[str], timezone,
     """Create a CSV file from records."""
     output = StringIO()
     writer = csv.writer(output)
-    
+
     if include_header:
         writer.writerow(header)
-    
+
     for record in records:
         writer.writerow(record.to_row(header, timezone))
-    
+
     return BytesIO(output.getvalue().encode("utf-8"))
 
 
 def has_valid_data(values: dict) -> bool:
-    """Check if the record has at least one non-empty, non-None channel parameter value."""
+    """Check for at least one non-empty, non-None channel parameter value."""
     return any(
         value is not None and
         str(value).strip() != ""
@@ -154,12 +155,12 @@ def build_csv_header(channel_params: List[str], include_wigos_id: bool = True,
     csv_header = ["station_id"]
     if include_wigos_id:
         csv_header.append("wigos_id")
-    
+
     if use_single_timestamp:
         csv_header.append("timestamp")
     else:
         csv_header.extend(["date", "time"])
-    
+
     csv_header.extend(channel_params)
     return csv_header
 
@@ -179,41 +180,41 @@ def prepare_csv_files_new_mode(
     timezone = channel.timezone
     channel_params = channel.get_parameter_mapping_values()
     csv_header = build_csv_header(channel_params, include_wigos_id, use_single_timestamp)
-    
+
     csv_files = []
     skipped_records = 0
-    
+
     for data in data_records:
         values = extract_values(data, channel_params, from_root=False)
-        
+
         if not has_valid_data(values):
             skipped_records += 1
             logger.debug(
                 f"[S3 Prepare] Skipping record for station {data.get('station_id')} - no valid values")
             continue
-        
+
         record = ObsRecord(
             station_id=data.get("station_id"),
             wigos_id=data.get("wigos_id"),
             timestamp=make_aware_timestamp(data.get("timestamp"), timezone),
             values=values
         )
-        
+
         csv_file = create_csv_file([record], csv_header, timezone, include_header)
-        
+
         id_for_path = record.wigos_id or record.station_id
         filename = f"WIGOS_{id_for_path}_{record.timestamp.strftime('%Y%m%dT%H%M%S')}.csv"
-        
+
         if create_station_dir:
             remote_path = f"{channel.prefix}/{id_for_path}/{filename}"
         else:
             remote_path = f"{channel.prefix}/{filename}"
-        
+
         csv_files.append((csv_file, remote_path))
-    
+
     if skipped_records > 0:
         logger.info(f"[S3 Prepare] Skipped {skipped_records} records with no valid values")
-    
+
     return csv_files
 
 
@@ -233,38 +234,38 @@ def prepare_csv_files_append_mode(
     timezone = channel.timezone
     channel_params = channel.get_parameter_mapping_values()
     csv_header = build_csv_header(channel_params, include_wigos_id, use_single_timestamp)
-    
+
     # Filter and convert records
     valid_records = []
     skipped_records = 0
-    
+
     for d in data_records:
         values = extract_values(d, channel_params, from_root=False)
-        
+
         if not has_valid_data(values):
             skipped_records += 1
             logger.debug(
                 f"[S3 Prepare] Skipping record for station {d.get('station_id')} - no valid values")
             continue
-        
+
         valid_records.append(ObsRecord(
             station_id=d.get("station_id"),
             wigos_id=d.get("wigos_id"),
             timestamp=make_aware_timestamp(d.get("timestamp"), timezone),
             values=values
         ))
-    
+
     if skipped_records > 0:
         logger.info(f"[S3 Prepare] Skipped {skipped_records} records with no valid values")
-    
+
     if not valid_records:
         logger.info("[S3 Prepare] No valid records to process after filtering")
         return []
-    
+
     grouped = group_records_by_station_day(valid_records)
-    
+
     csv_files = []
-    
+
     for station_id, days in grouped.items():
         for day, incoming_records in days.items():
             filename = f"WIGOS_{station_id}_{day.replace('-', '')}.csv"
@@ -272,49 +273,49 @@ def prepare_csv_files_append_mode(
                 remote_path = f"{channel.prefix}/{station_id}/{filename}"
             else:
                 remote_path = f"{channel.prefix}/{filename}"
-            
+
             final_records = {}
-            
+
             try:
                 logger.debug(f"[S3 Prepare] Checking for existing file at '{remote_path}'")
                 existing_csv = client.get(remote_path)
-                
+
                 logger.debug(f"[S3 Prepare] Found existing file at '{remote_path}'")
-                
+
                 existing_records = csv_to_records(existing_csv, csv_header, channel_params, timezone)
                 existing_timestamps = {r.timestamp for r in existing_records}
-                
+
                 logger.debug(f"[S3 Prepare] Checking for new records to append for '{remote_path}'")
-                
+
                 new_records = []
                 for ts, record in incoming_records.items():
                     if ts not in existing_timestamps:
                         new_records.append(record)
-                
+
                 if not new_records:
                     logger.debug(f"[S3 Prepare] No new records to append for '{remote_path}'. Skipping..")
                     continue
-                
+
                 logger.debug(f"[S3 Prepare] Found {len(new_records)} new records. Appending...")
-                
+
                 final_records = {r.timestamp: r for r in existing_records}
             except S3Error as e:
                 logger.debug(
                     f"[S3 Prepare] No existing file for '{remote_path}' or error accessing it: {e}. Creating new.")
-            
+
             final_records.update(incoming_records)
-            
+
             final_records_list = list(final_records.values())
             csv_file = create_csv_file(final_records_list, csv_header, timezone, include_header)
             csv_files.append((csv_file, remote_path))
-    
+
     return csv_files
 
 
 def upload_single_file(client, csv_file: BytesIO, remote_path: str) -> str:
     """
     Upload a single CSV file to S3.
-    
+
     Returns the remote_path on success for logging purposes.
     Raises S3Error on failure.
     """
@@ -352,10 +353,10 @@ def dispatch_to_s3(
     client = channel.get_client()
     write_mode = channel.write_mode
     last_sent_obs_time = None
-    
+
     logger.debug(f"[S3 Dispatch] Using S3 connection for {channel.name}")
     logger.debug(f"[S3 Dispatch] Bucket: {channel.bucket_name}, Prefix: {channel.prefix}")
-    
+
     try:
         # Prepare CSV files based on write mode
         if write_mode == "new_file":
@@ -372,27 +373,27 @@ def dispatch_to_s3(
             )
         else:
             raise ValueError(f"Unknown write mode: {write_mode}")
-        
+
         if not csv_files:
             logger.info("[S3 Dispatch] No files to upload")
             return 0, None
-        
+
         # Upload files in parallel using ThreadPoolExecutor
         logger.info(f"[S3 Dispatch] Uploading {len(csv_files)} files with {max_workers} workers")
-        
+
         if len(csv_files) <= PARALLEL_THRESHOLD:
             uploaded, failed = _upload_sequential(client, csv_files)
         else:
             uploaded, failed = _upload_parallel(client, csv_files, max_workers)
-        
+
         # Get the last timestamp from the original records
         if data_records:
             timestamps = [make_aware_timestamp(d.get("timestamp"), channel.timezone) for d in data_records]
             last_sent_obs_time = max(timestamps)
-    
+
     finally:
         client.close()
-    
+
     logger.info(f"[S3 Dispatch] Uploaded {uploaded} files to {channel.name} (failed: {failed})")
     return uploaded, last_sent_obs_time
 
