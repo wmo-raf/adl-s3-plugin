@@ -150,7 +150,7 @@ folder sits at the bucket root.
 The header is `station_id,wigos_id,` then either `timestamp` or `date,time`,
 then the channel parameter names in mapping order:
 
-```csv
+```text
 station_id,wigos_id,timestamp,air_temperature,relative_humidity
 STN001,0-123-456-789,20240115T143000,25.5,65
 ```
