@@ -2,8 +2,8 @@
   "name": "ADL S3 Plugin",
   "description": "ADL plugin for dispatching observation data to S3-compatible storage (AWS S3, MinIO, etc.)",
   "author": "WMO RAF",
-  "author_url": "TODO",
-  "url": "TODO",
+  "author_url": "https://github.com/wmo-raf",
+  "url": "https://github.com/wmo-raf/adl-s3-plugin",
   "license": "MIT",
-  "contact": "TODO"
+  "contact": "eotenyo@wmo.int"
 }

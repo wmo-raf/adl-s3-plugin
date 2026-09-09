@@ -1,0 +1,60 @@
+# Screenshot manifest for the ADL S3 Plugin guide (docs/guide.md).
+# Regenerate from the adl repo:  scripts/capture-plugin-docs.sh ../adl-plugins/adl-s3-plugin
+# Fixture (execution pass): the harness's healthy FTP ingestion connection for data, plus an
+# S3 Upload channel (id 1) and a MinIO Upload channel (id 2) pointing at a MinIO container in
+# the capture compose (bucket "adl-demo"), each linked to the seeded stations, with one
+# dispatch completed before capture so the station-links page shows a last-sent time.
+# Channel URLs follow the core's dispatch-channel viewset; verify on the live stack.
+# Selectors are blind guesses — fix against the live pages.
+
+defaults:
+  viewport:
+  - 1440
+  - 900
+  padding: 12
+screenshots:
+- name: s3_upload_form
+  url: /s3upload/edit/1/
+  setup:
+  - fill: { selector: '#id_secret_key', value: '••••••••••••' }
+  # The channel's parameter mappings are an inline panel at the foot of the
+  # same form, and s3_parameter_mappings shoots them on their own — so hide
+  # them here rather than capping the height, which the runner refuses when
+  # the cap would cut a numbered badge.
+  - eval: "document.querySelector('#panel-parameter_mappings-section').style.display = 'none'"
+  capture:
+    selector: "#w-editor-form"
+- name: s3_minio_upload_form
+  url: /minioupload/edit/2/
+  setup:
+  - fill: { selector: '#id_secret_key', value: '••••••••••••' }
+  # The channel's parameter mappings are an inline panel at the foot of the
+  # same form, and s3_parameter_mappings shoots them on their own — so hide
+  # them here rather than capping the height, which the runner refuses when
+  # the cap would cut a numbered badge.
+  - eval: "document.querySelector('#panel-parameter_mappings-section').style.display = 'none'"
+  callouts:
+  - badge:
+      target: '#id_endpoint_url'
+      n: 1
+  - badge:
+      target: '#id_use_ssl'
+      n: 2
+  - badge:
+      target: '#id_verify_ssl'
+      n: 3
+  capture:
+    selector: "#w-editor-form"
+- name: s3_parameter_mappings
+  url: /s3upload/edit/1/
+  capture:
+    selector: '#panel-parameter_mappings-section'
+- name: s3_station_links
+  url: /dispatch-channel/1/station-links
+  setup:
+  # `main` is the admin's scroll container, so it crops to the viewport and
+  # trails empty space below a short table; fitMain() collapses it onto its
+  # content while keeping the page heading.
+  - eval: "fitMain()"
+  capture:
+    selector: main
