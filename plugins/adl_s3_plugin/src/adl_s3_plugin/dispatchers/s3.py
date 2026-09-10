@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_WORKERS = 10
 PARALLEL_THRESHOLD = 3
 
+# Format of the single 'timestamp' column, when one is used instead of
+# separate 'date' and 'time' columns. Written by ObsRecord.to_row and read
+# back by csv_to_records — one constant so the two cannot drift apart.
+TIMESTAMP_COLUMN_FORMAT = "%Y%m%dT%H%M%S"
+
 
 class S3FileError(Exception):
     """Error during S3 file preparation or upload"""
@@ -63,6 +68,36 @@ def build_timestamp(date_series, time_series):
         raise S3FileError(f"Error processing timestamp: {e}")
 
 
+def parse_timestamp_column(timestamp_series):
+    """Parse the single 'timestamp' column back into datetimes."""
+    try:
+        dt_series = pd.to_datetime(
+            timestamp_series, format=TIMESTAMP_COLUMN_FORMAT, errors="coerce"
+        )
+        if dt_series.isnull().any():
+            raise ValueError("Invalid or missing datetime")
+        return dt_series
+    except Exception as e:
+        raise S3FileError(f"Error processing timestamp: {e}")
+
+
+def read_timestamps(df, csv_header):
+    """
+    Read observation times out of an existing CSV, in whichever form it was
+    written.
+
+    The header is the authority, exactly as it is for writing in
+    ``ObsRecord.to_row``: a header carrying 'timestamp' means one combined
+    column, anything else means separate 'date' and 'time' columns. Deciding
+    it the same way on both sides is what keeps a file readable by the
+    configuration that wrote it.
+    """
+    if "timestamp" in csv_header:
+        return parse_timestamp_column(df["timestamp"].astype(str))
+
+    return build_timestamp(df["date"].astype(str), df["time"].astype(str))
+
+
 def extract_values(record, keys, from_root=True):
     """Extract values for given keys from a record."""
     source = record if from_root else record.get("values", {})
@@ -89,7 +124,7 @@ class ObsRecord:
             base["wigos_id"] = self.wigos_id or ""
 
         if "timestamp" in header:
-            base["timestamp"] = dt.strftime("%Y%m%dT%H%M%S")
+            base["timestamp"] = dt.strftime(TIMESTAMP_COLUMN_FORMAT)
         else:
             base["date"] = dt.strftime("%Y-%m-%d")
             base["time"] = dt.strftime("%H:%M:%S")
@@ -102,7 +137,7 @@ def csv_to_records(csv_content: bytes, csv_header: List[str], value_columns: Lis
     """Parse CSV content into ObsRecord objects."""
     df = pd.read_csv(BytesIO(csv_content))
     validate_csv_header(df.columns, csv_header)
-    df["timestamp"] = build_timestamp(df["date"].astype(str), df["time"].astype(str))
+    df["timestamp"] = read_timestamps(df, csv_header)
     df = df.sort_values(by=["timestamp"])
 
     return [
