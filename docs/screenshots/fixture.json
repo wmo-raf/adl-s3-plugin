@@ -1,0 +1,125 @@
+{
+  "capture": {
+    "connection": "Demo FTP (mock source)",
+    "ingest": true,
+    "probe": true,
+    "station_checks": ["DEMO001"],
+    "dispatch": ["Demo S3 Upload", "Demo MinIO Upload"],
+    "wait": 240,
+    "present_interval": 15
+  },
+  "connection": {
+    "model": "adl_ftp_plugin.NetworkFTP",
+    "fields": {
+      "name": "Demo FTP (mock source)",
+      "plugin": "adl_ftp_plugin",
+      "stations_timezone": "Africa/Nairobi",
+      "plugin_processing_interval": 1,
+      "connection_type": "ftp",
+      "host": "mock_ftp",
+      "port": 21,
+      "username": "demo",
+      "password": "demo",
+      "passive_mode": true,
+      "timeout": 20,
+      "decoder": "toa5"
+    },
+    "children": {
+      "variable_mappings": [
+        {"adl_parameter": "Air Temperature", "file_variable_name": "AirTC_Avg", "file_variable_unit": "degC"},
+        {"adl_parameter": "Relative Humidity", "file_variable_name": "RH", "file_variable_unit": "percent"},
+        {"adl_parameter": "Atmospheric Pressure", "file_variable_name": "BP_hPa_Avg", "file_variable_unit": "hPa"},
+        {"adl_parameter": "Precipitation", "file_variable_name": "Rain_mm_Tot", "file_variable_unit": "mm"},
+        {"adl_parameter": "Wind Speed", "file_variable_name": "WS_ms_Avg", "file_variable_unit": "m/s"},
+        {"adl_parameter": "Wind Direction", "file_variable_name": "WindDir", "file_variable_unit": "degree"},
+        {"adl_parameter": "Solar Radiation", "file_variable_name": "SlrW_Avg", "file_variable_unit": "W/m^2"}
+      ]
+    }
+  },
+  "station_links": [
+    {
+      "model": "adl_ftp_plugin.FTPStationLink",
+      "station": "DEMO001",
+      "fields": {
+        "ftp_path": "/data/DEMO001",
+        "file_pattern": "DEMO001_*.dat",
+        "listing_strategy": "pattern_only",
+        "start_date": "$NOW-1d"
+      }
+    },
+    {
+      "model": "adl_ftp_plugin.FTPStationLink",
+      "station": "DEMO002",
+      "fields": {
+        "ftp_path": "/data/DEMO002",
+        "file_pattern": "DEMO002_*.dat",
+        "dir_structured_by_date": true,
+        "date_granularity": "day",
+        "month_dir_format": "m",
+        "listing_strategy": "filter_by_date",
+        "filename_date_format": "YYYYMMDD",
+        "filename_date_timezone": "Africa/Nairobi",
+        "start_date": "$NOW-1d"
+      }
+    }
+  ],
+  "dispatch_channels": [
+    {
+      "model": "adl_s3_plugin.S3Upload",
+      "fields": {
+        "name": "Demo S3 Upload",
+        "enabled": true,
+        "timezone": "UTC",
+        "endpoint_url": "http://s3.example.test:9000",
+        "bucket_name": "adl-demo",
+        "access_key": "$ENV:S3_ACCESS_KEY|adl-demo",
+        "secret_key": "$ENV:S3_SECRET_KEY|adl-demo-secret",
+        "region": "us-east-1",
+        "use_ssl": false,
+        "verify_ssl": false,
+        "prefix": "observations",
+        "write_mode": "append",
+        "use_single_timestamp": true,
+        "max_upload_workers": 10,
+        "data_check_interval": 10,
+        "start_date": "$NOW-1d"
+      },
+      "children": {
+        "parameter_mappings": [
+          {"parameter": "Air Temperature", "channel_parameter": "air_temperature", "channel_unit": "degC"},
+          {"parameter": "Relative Humidity", "channel_parameter": "relative_humidity", "channel_unit": "percent"},
+          {"parameter": "Atmospheric Pressure", "channel_parameter": "pressure", "channel_unit": "hPa"},
+          {"parameter": "Precipitation", "channel_parameter": "precipitation", "channel_unit": "mm"},
+          {"parameter": "Wind Speed", "channel_parameter": "wind_speed", "channel_unit": "m/s"}
+        ]
+      }
+    },
+    {
+      "model": "adl_s3_plugin.MinIOUpload",
+      "fields": {
+        "name": "Demo MinIO Upload",
+        "enabled": true,
+        "timezone": "UTC",
+        "endpoint_url": "http://s3.example.test:9000",
+        "bucket_name": "adl-demo",
+        "access_key": "$ENV:S3_ACCESS_KEY|adl-demo",
+        "secret_key": "$ENV:S3_SECRET_KEY|adl-demo-secret",
+        "region": "us-east-1",
+        "use_ssl": false,
+        "verify_ssl": false,
+        "prefix": "minio-observations",
+        "write_mode": "new_file",
+        "use_single_timestamp": false,
+        "max_upload_workers": 10,
+        "data_check_interval": 10,
+        "start_date": "$NOW-1d"
+      },
+      "children": {
+        "parameter_mappings": [
+          {"parameter": "Air Temperature", "channel_parameter": "air_temperature", "channel_unit": "degC"},
+          {"parameter": "Relative Humidity", "channel_parameter": "relative_humidity", "channel_unit": "percent"}
+        ]
+      }
+    }
+  ]
+}
