@@ -4,6 +4,12 @@
 #
 #    pip-compile --output-file=dev.txt dev.in
 #
+boto3==1.43.100
+    # via -r base.in
+botocore==1.43.100
+    # via
+    #   boto3
+    #   s3transfer
 build==1.2.2.post1
     # via
     #   -r dev.in
@@ -12,10 +18,20 @@ click==8.1.7
     # via pip-tools
 flake8==7.0.0
     # via -r dev.in
+jmespath==1.1.0
+    # via
+    #   boto3
+    #   botocore
 mccabe==0.7.0
     # via flake8
+numpy==2.2.6
+    # via pandas
 packaging==24.1
-    # via build
+    # via
+    #   build
+    #   wheel
+pandas==2.3.3
+    # via -r base.in
 pip-tools==7.4.1
     # via -r dev.in
 pycodestyle==2.11.1
@@ -26,11 +42,25 @@ pyproject-hooks==1.2.0
     # via
     #   build
     #   pip-tools
+python-dateutil==2.9.0.post0
+    # via
+    #   botocore
+    #   pandas
+pytz==2026.3.post1
+    # via pandas
+s3transfer==0.19.2
+    # via boto3
+six==1.17.0
+    # via python-dateutil
 tomli==2.0.2
     # via
     #   build
     #   pip-tools
-wheel==0.44.0
+tzdata==2026.4
+    # via pandas
+urllib3==2.8.0
+    # via botocore
+wheel==0.46.2
     # via pip-tools
 
 # The following packages are considered to be unsafe in a requirements file:
